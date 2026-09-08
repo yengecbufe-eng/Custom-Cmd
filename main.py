@@ -80,9 +80,6 @@ def apply_color(hex_code):
     print(hex_to_ansi(hex_code), end="")
 
 def apply_to_windows_terminal(hex_color):
-    """
-    Yeni Windows Terminal'in (görseldeki sekmeli ekran) settings.json dosyasına rengi yazar.
-    """
     appdata = os.environ.get("LOCALAPPDATA", "")
     wt_path = os.path.join(appdata, "Packages")
     if not os.path.exists(wt_path):
@@ -125,12 +122,8 @@ def apply_to_windows_terminal(hex_color):
                 except Exception:
                     pass
 
-def apply_colors_to_windows_system(bg_code, fg_code, custom_hex=None):
-    """
-    Eski klasik CMD ve yeni Windows Terminal için renkleri ve AutoRun başlangıcını aktarır.
-    """
+def apply_colors_to_windows_system(bg_code, fg_code, custom_hex=None, prompt_str=None):
     if os.name == 'nt':
-        # 1. Klasik CMD Registry ayarları
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Console", 0, winreg.KEY_SET_VALUE)
             bg_int = int(bg_code, 16)
@@ -147,18 +140,21 @@ def apply_colors_to_windows_system(bg_code, fg_code, custom_hex=None):
         except Exception:
             pass
 
-        # 2. CMD açıldığında renk basması için AutoRun kaydı
         try:
             key_proc = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Command Processor", 0, winreg.KEY_SET_VALUE)
+            autorun_cmd = ""
             if custom_hex:
                 r, g, b = int(custom_hex[0:2], 16), int(custom_hex[2:4], 16), int(custom_hex[4:6], 16)
-                autorun_cmd = f'echo \x1b[38;2;{r};{g};{b}m'
+                autorun_cmd += f'echo \x1b[38;2;{r};{g};{b}m'
+            if prompt_str:
+                autorun_cmd += f' & prompt $p$g'
+            
+            if autorun_cmd:
                 winreg.SetValueEx(key_proc, "AutoRun", 0, winreg.REG_SZ, autorun_cmd)
             winreg.CloseKey(key_proc)
         except Exception:
             pass
 
-        # 3. Windows Terminal için JSON güncellemesi
         if custom_hex:
             apply_to_windows_terminal(custom_hex)
 
@@ -175,7 +171,7 @@ def settings_panel():
         print(f"  1. Change Text HEX Color          [Current: #{config['hex_color']}]")
         print(f"  2. Change Standard Color Code     [Current: BG={config['bg_color']} FG={config['fg_color']}]")
         print(f"  3. Change Prompt Text             [Current: {config['prompt']}]")
-        print(f"  4. Change Window Title           [Current: {config['title']}]")
+        print(f"  4. Change Window Title            [Current: {config['title']}]")
         print(f"  5. Toggle Random Auto-Launch     [Current: {'ENABLED' if is_auto else 'DISABLED'}]")
         print("  6. SAVE & APPLY TO SYSTEM (CMD & TERMINAL)")
         print("==================================================")
@@ -233,9 +229,9 @@ def settings_panel():
 
         elif choice == "6":
             save_config(config)
-            apply_colors_to_windows_system(config["bg_color"], config["fg_color"], config["hex_color"])
+            apply_colors_to_windows_system(config["bg_color"], config["fg_color"], config["hex_color"], config["prompt"])
             apply_color(config["hex_color"])
-            print("\n✅ SUCCESS: Colors saved to Windows System, Registry & Windows Terminal!")
+            print("\n✅ SUCCESS: Colors & Prompt saved to Windows System, Registry & Windows Terminal!")
             input("Press Enter to return...")
             break
 
@@ -285,3 +281,21 @@ def custom_cmd_app():
 
 if __name__ == "__main__":
     custom_cmd_app()
+    
+    if os.name == 'nt':
+        r = int(config["hex_color"][0:2], 16)
+        g = int(config["hex_color"][2:4], 16)
+        b = int(config["hex_color"][4:6], 16)
+        
+        # 1. Standart CMD rengini ayarla (A = Açık Yeşil)
+        os.system(f'color {config["bg_color"]}{config["fg_color"]}')
+        set_cmd_title(config["title"])
+        
+        # 2. ANSI Escaping modunu garantiye alıp varsayılan prompt yap
+        os.system('prompt $p$g')
+        
+        # 3. Kullanıcı klasörüne geç ve rengi ANSI ile basarak CMD'yi çalıştır
+        user_dir = os.environ.get("USERPROFILE", "C:\\Users")
+        ansi_color = f"\x1b[38;2;{r};{g};{b}m"
+        
+        os.system(f'cmd.exe /v:on /k "cd /d "{user_dir}" && echo {ansi_color}"')
